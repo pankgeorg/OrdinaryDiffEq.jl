@@ -667,8 +667,10 @@ function _initialize_dae!(
 
     # The solution is written back into `alg_u` anyway, so the solver can iterate in it.
     # If the solve throws, `alg_u` gets back its values from before the solve, held in
-    # `_u`. `_u` drops the partials of a `Dual` state, so that one is copied instead.
-    alias_u0 = typeof(u) === typeof(_u)
+    # `_u`. `_u` drops the partials of a `Dual` state, so that one is copied instead, and
+    # so is a view of any other array type (a solver can't update a view of a GPU array
+    # in place without scalar indexing).
+    alias_u0 = u isa Array && typeof(u) === typeof(_u)
     nlsol = try
         solve(
             nlprob, nlsolve; alg.abstol, integrator.opts.reltol,
