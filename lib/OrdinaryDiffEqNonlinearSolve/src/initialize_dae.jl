@@ -665,10 +665,22 @@ function _initialize_dae!(
     nlprob = NonlinearProblem(nlfunc, alg_u, p)
     nlsolve = default_nlsolve(alg.nlsolve, isinplace, u, nlprob, isAD, nlchunk)
 
-    nlsol = solve(
-        nlprob, nlsolve; alg.abstol, integrator.opts.reltol,
-        verbose = integrator.opts.verbose.nonlinear_verbosity
-    )
+    # The solution is written back into `alg_u` anyway, so the solver can iterate in it.
+    # If the solve throws, `alg_u` gets back its values from before the solve, held in
+    # `_u`. `_u` drops the partials of a `Dual` state, so that one is copied instead, and
+    # so is a view of any other array type (a solver can't update a view of a GPU array
+    # in place without scalar indexing).
+    alias_u0 = u isa Array && typeof(u) === typeof(_u)
+    nlsol = try
+        solve(
+            nlprob, nlsolve; alg.abstol, integrator.opts.reltol,
+            alias = SciMLBase.NonlinearAliasSpecifier(; alias_u0),
+            verbose = integrator.opts.verbose.nonlinear_verbosity
+        )
+    catch
+        alias_u0 && copyto!(alg_u, @view _u[algebraic_vars])
+        rethrow()
+    end
     alg_u .= nlsol.u
 
 
